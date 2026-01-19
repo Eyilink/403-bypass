@@ -39,6 +39,9 @@ Options:
   -m, --method     Specify Method <POST, PUT, PATCH> (Default, GET)
   -H, --header     Add custom header (repeatable)
   -a, --all        Run both URL encode and header bypass tests
+  -fs              Exclude a certain size , Ffuf style
+  -d               When POST is used, it enable to transmit data, Curl style
+  -st              Mask unsuccessful result, for screenshots mostly
   -h, --help       Display help and exit
 ```
 
@@ -63,11 +66,7 @@ Options:
 ---
 
 # 👤 Author
- Ahmad Mugheera
-- 🐦 X (Twitter): [@mugh33ra](https://x.com/mugh33ra)
-- 💼 LinkedIn: [@mugh33ra](www.linkedin.com/in/ahmadmugheera)
-- 🧑‍💻 GitHub: @mugh33ra
-- ⭐ If you find this tool useful, consider starring the repository.
+Recylced from -> Ahmad Mugheera
 
 
 
