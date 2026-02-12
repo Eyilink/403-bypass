@@ -16,6 +16,7 @@ headers=()
 test_mode="url"
 post_data=""
 filter_sizes=()
+filter_regex=""
 timeout=10  # Default timeout in seconds
 show_timeouts=true  # Show timeout messages by default
 
@@ -24,7 +25,15 @@ show_timeouts=true  # Show timeout messages by default
 banner() {
     echo -e "${cyan}${BOLD}"
     cat << "EOF"
-	403 - BYPASSES
+     _____ ___ ____      ____
+    |  ___/ _ \___ \    |  _ \                          
+    | |_ | | | |__) |___| |_) |_   _ _ __   __ _ ___ ___
+    |  _|| | | |__ <____|  _ <| | | | '_ \ / _` / __/ __|
+    | |  | |_| |__) |   | |_) | |_| | |_) | (_| \__ \__ \
+    |_|   \___/____/    |____/ \__, | .__/ \__,_|___/___/
+                                __/ | |                  
+        Coded By @mugh33ra     |___/|_|                  
+           X: @mugh33ra
 EOF
     echo -e "${end}"
 }
@@ -36,7 +45,10 @@ help_usage() {
     echo "  -m, --method     Specify Method <POST, PUT, PATCH> (Default, GET)"
     echo "  -d, --data       POST data to send with request (e.g., 'param1=value1&param2=value2')"
     echo "  -H, --header     Add custom header (repeatable)"
-    echo "  -fs, --filter-size Filter out responses with specific size (repeatable, e.g., -fs 1234 -fs 5678)"
+    echo "  -fs, --filter-size Filter out responses with specific size"
+    echo "                   Use multiple times: -fs 1234 -fs 5678"
+    echo "                   OR comma-separated: -fs 1234,5678,9999"
+    echo "  -fr, --filter-regex Filter out responses matching regex pattern in body (e.g., -fr 'error|forbidden')"
     echo "  -t, --timeout    Request timeout in seconds (default: 10)"
     echo "  -st, --skip-timeout Skip displaying timeout errors (cleaner output)"
     echo "  -a, --all        Run both URL encode and header bypass tests"
@@ -69,9 +81,15 @@ while [[ $# -gt 0 ]]; do
             } || { echo "[!] Header missing"; exit 1; } ;;
         -fs|--filter-size)
             [[ -n $2 && $2 != -* ]] && {
-                filter_sizes+=("$2")
+                # Support comma-separated values
+                IFS=',' read -ra SIZES <<< "$2"
+                for size in "${SIZES[@]}"; do
+                    filter_sizes+=("$size")
+                done
                 shift 2
             } || { echo "[!] Filter size missing"; exit 1; } ;;
+        -fr|--filter-regex)
+            [[ -n $2 && $2 != -* ]] && { filter_regex=$2; shift 2; } || { echo "[!] Filter regex missing"; exit 1; } ;;
         -t|--timeout)
             [[ -n $2 && $2 != -* ]] && { timeout=$2; shift 2; } || { echo "[!] Timeout value missing"; exit 1; } ;;
         -st|--skip-timeout)
@@ -129,32 +147,64 @@ run_check() {
     local p="$1"
     local current_p=$(echo "$p" | sed "s|\${pat}|$pat|g")
     local path_is_is_flag=""
-    local data_flag=""
+    local temp_body=""
 
     # Enable --path-as-is only when curl would normalize the path
     if [[ "$current_p" =~ (//|/\.\./|\.\./|%2e|%252e|%2f|\\|;) ]]; then
         path_is_is_flag="--path-as-is"
     fi
 
-    # Add data if POST/PUT/PATCH method and data is provided
-    if [[ -n "$post_data" ]]; then
-        data_flag="-d"
+    # Create temp file for body if regex filter is enabled
+    if [[ -n "$filter_regex" ]]; then
+        temp_body=$(mktemp)
     fi
 
-    local res=$(curl -k -s $path_is_is_flag "${headers[@]}" \
-        -o /dev/null -w "%{http_code}|%{size_download}" \
-        --max-time "$timeout" --connect-timeout "$timeout" \
-        "${target}${current_p}" -X "$method" $data_flag "$post_data" -H "User-Agent: Mozilla/5.0")
+    # Build curl command with conditional data flag
+    if [[ -n "$post_data" ]]; then
+        if [[ -n "$filter_regex" ]]; then
+            local res=$(curl -k -s $path_is_is_flag "${headers[@]}" \
+                -o "$temp_body" -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "${target}${current_p}" -X "$method" -d "$post_data" -H "User-Agent: Mozilla/5.0")
+        else
+            local res=$(curl -k -s $path_is_is_flag "${headers[@]}" \
+                -o /dev/null -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "${target}${current_p}" -X "$method" -d "$post_data" -H "User-Agent: Mozilla/5.0")
+        fi
+    else
+        if [[ -n "$filter_regex" ]]; then
+            local res=$(curl -k -s $path_is_is_flag "${headers[@]}" \
+                -o "$temp_body" -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "${target}${current_p}" -X "$method" -H "User-Agent: Mozilla/5.0")
+        else
+            local res=$(curl -k -s $path_is_is_flag "${headers[@]}" \
+                -o /dev/null -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "${target}${current_p}" -X "$method" -H "User-Agent: Mozilla/5.0")
+        fi
+    fi
 
     local st=$(echo "$res" | cut -d'|' -f1)
     local len=$(echo "$res" | cut -d'|' -f2)
 
     # Check for timeout (curl returns 000 or empty on timeout)
     if [[ -z "$st" || "$st" == "000" ]]; then
+        [[ -n "$temp_body" ]] && rm -f "$temp_body"
         if [[ "$show_timeouts" == "true" ]]; then
             echo -e "Payload [ ${yellow}${current_p}${end} ]: ${red}TIMEOUT (${timeout}s)${end}"
         fi
         return
+    fi
+
+    # Filter by regex pattern in body
+    if [[ -n "$filter_regex" && -f "$temp_body" ]]; then
+        if grep -qiE "$filter_regex" "$temp_body"; then
+            rm -f "$temp_body"
+            return
+        fi
+        rm -f "$temp_body"
     fi
 
     # Filter out responses with specified sizes
@@ -194,7 +244,7 @@ run_check() {
 run_header_check() {
     local header="$1"
     local current_header=$(echo "$header" | sed "s|\${pat}|$pat|g")
-    local data_flag=""
+    local temp_body=""
 
     if [[ "$current_header" =~ ^X-(Original|Rewrite)-(URL|Uri): ]]; then
         local test_url="${base_url}/"
@@ -204,25 +254,57 @@ run_header_check() {
         local header_value=$(echo "$current_header" | cut -d':' -f2- | sed 's/^ //')
     fi
 
-    # Add data if POST/PUT/PATCH method and data is provided
-    if [[ -n "$post_data" ]]; then
-        data_flag="-d"
+    # Create temp file for body if regex filter is enabled
+    if [[ -n "$filter_regex" ]]; then
+        temp_body=$(mktemp)
     fi
 
-    local res=$(curl -k -s "${headers[@]}" -H "$current_header" \
-        -o /dev/null -w "%{http_code}|%{size_download}" \
-        --max-time "$timeout" --connect-timeout "$timeout" \
-        "$test_url" -X "$method" $data_flag "$post_data" -H "User-Agent: Mozilla/5.0")
+    # Build curl command with conditional data flag
+    if [[ -n "$post_data" ]]; then
+        if [[ -n "$filter_regex" ]]; then
+            local res=$(curl -k -s "${headers[@]}" -H "$current_header" \
+                -o "$temp_body" -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "$test_url" -X "$method" -d "$post_data" -H "User-Agent: Mozilla/5.0")
+        else
+            local res=$(curl -k -s "${headers[@]}" -H "$current_header" \
+                -o /dev/null -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "$test_url" -X "$method" -d "$post_data" -H "User-Agent: Mozilla/5.0")
+        fi
+    else
+        if [[ -n "$filter_regex" ]]; then
+            local res=$(curl -k -s "${headers[@]}" -H "$current_header" \
+                -o "$temp_body" -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "$test_url" -X "$method" -H "User-Agent: Mozilla/5.0")
+        else
+            local res=$(curl -k -s "${headers[@]}" -H "$current_header" \
+                -o /dev/null -w "%{http_code}|%{size_download}" \
+                --max-time "$timeout" --connect-timeout "$timeout" \
+                "$test_url" -X "$method" -H "User-Agent: Mozilla/5.0")
+        fi
+    fi
 
     local st=$(echo "$res" | cut -d'|' -f1)
     local len=$(echo "$res" | cut -d'|' -f2)
 
     # Check for timeout (curl returns 000 or empty on timeout)
     if [[ -z "$st" || "$st" == "000" ]]; then
+        [[ -n "$temp_body" ]] && rm -f "$temp_body"
         if [[ "$show_timeouts" == "true" ]]; then
             echo -e "Header [ ${yellow}${current_header}${end} ]: ${red}TIMEOUT (${timeout}s)${end}"
         fi
         return
+    fi
+
+    # Filter by regex pattern in body
+    if [[ -n "$filter_regex" && -f "$temp_body" ]]; then
+        if grep -qiE "$filter_regex" "$temp_body"; then
+            rm -f "$temp_body"
+            return
+        fi
+        rm -f "$temp_body"
     fi
 
     # Filter out responses with specified sizes
@@ -270,6 +352,9 @@ encode_bypass() {
     if [[ ${#filter_sizes[@]} -gt 0 ]]; then
         echo -e "${yellow}[i] Filtering sizes: ${filter_sizes[*]}${end}"
     fi
+    if [[ -n "$filter_regex" ]]; then
+        echo -e "${yellow}[i] Filtering regex: ${filter_regex}${end}"
+    fi
     echo -e "${yellow}[i] Request timeout: ${timeout}s${end}"
 
     set -f
@@ -294,6 +379,9 @@ header_bypass() {
 
     if [[ ${#filter_sizes[@]} -gt 0 ]]; then
         echo -e "${yellow}[i] Filtering sizes: ${filter_sizes[*]}${end}"
+    fi
+    if [[ -n "$filter_regex" ]]; then
+        echo -e "${yellow}[i] Filtering regex: ${filter_regex}${end}"
     fi
     echo -e "${yellow}[i] Request timeout: ${timeout}s${end}"
 
