@@ -33,7 +33,7 @@ This tool automates detection of access control bypasses caused by:
 ## 🚀 Usage
 
 ```bash
-Usage: 403bypass.sh -u <url> [options]
+Usage: 403_401_bypass.sh -u <url> [options]
 Options:
   -u, --url        Specify <Target_Url>
   -m, --method     Specify Method <POST, PUT, PATCH> (Default, GET)
@@ -52,15 +52,15 @@ Options:
 ## 🧪 Examples
 
 ```bash
-./403bypass.sh -u https://example.com/admin
+./403_401_bypass.sh -u https://example.com/admin
 
-./403bypass.sh -u https://example.com/api/admin -m POST
+./403_401_bypass.sh -u https://example.com/api/admin -m POST
 
-./403bypass.sh -u https://example.com/admin \
+./403_401_bypass.sh -u https://example.com/admin \
   -H "Authorization: Bearer TOKEN" \
   -H "X-Forwarded-For: 127.0.0.1"
 
-./403bypass.sh -u https://example.com/admin \
+./403_401_bypass.sh -u https://example.com/admin \
   -H "Authorization: Bearer TOKEN" \
   --all
 ```
