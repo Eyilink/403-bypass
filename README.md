@@ -43,6 +43,7 @@ Options:
   -fr              Exclude a certain Regex
   -d               When POST is used, it enable to transmit data, Curl style
   -st              Mask unsuccessful result, for screenshots mostly
+  -wb              Add WAF bypass unicode payloads
   -h, --help       Display help and exit
 ```
 
